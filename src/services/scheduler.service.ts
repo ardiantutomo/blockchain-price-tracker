@@ -6,7 +6,7 @@ import { PriceService } from './price.service';
 export class SchedulerService {
   constructor(private readonly priceService: PriceService) {}
 
-  @Cron('*/5 * * * * *')
+  @Cron('0 */5 * * * *')
   handleCron() {
     this.priceService.updatePrices().catch(console.error);
   }
