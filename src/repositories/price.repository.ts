@@ -5,12 +5,18 @@ import { PrismaClient } from '@prisma/client';
 export class PriceRepository {
   private prisma = new PrismaClient();
 
-  async findHourlyPrices(chain: string) {
-    return this.prisma.price.findMany({
-      where: { chain },
+  async findPricesSinceYesterday(chain: string) {
+    const prices = await this.prisma.price.findMany({
+      where: {
+        chain,
+        createdAt: {
+          gte: new Date(new Date().setDate(new Date().getDate() - 1)),
+        },
+      },
       orderBy: { createdAt: 'desc' },
-      take: 24,
     });
+
+    return prices;
   }
 
   async findLatestPrice(chain: string) {

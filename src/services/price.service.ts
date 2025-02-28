@@ -1,9 +1,9 @@
 import { EvmChain } from '@moralisweb3/common-evm-utils';
+import { MailerService } from '@nestjs-modules/mailer';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import Moralis from 'moralis';
-import nodemailer from 'nodemailer';
 import { PriceRepository } from '../repositories/price.repository';
 import { AlertService } from './alert.service';
 
@@ -13,6 +13,7 @@ export class PriceService implements OnModuleInit {
     private readonly priceRepository: PriceRepository,
     private readonly alertService: AlertService,
     private readonly configService: ConfigService,
+    private readonly mailerService: MailerService,
   ) {}
 
   async onModuleInit() {
@@ -22,12 +23,30 @@ export class PriceService implements OnModuleInit {
   }
 
   async getHourlyPrices(chain: string) {
-    return this.priceRepository.findHourlyPrices(chain);
+    const prices = await this.priceRepository.findPricesSinceYesterday(chain);
+
+    const hourlyPrices = [];
+    const seenHours = new Set();
+
+    for (let i = 0; i < 24; i++) {
+      const price = prices.find((p) => p.createdAt.getHours() === i);
+      if (price) {
+        hourlyPrices.push(price);
+        seenHours.add(i);
+      } else {
+        hourlyPrices.push({
+          price: 0,
+          createdAt: new Date(new Date().setHours(i, 0, 0, 0)),
+        });
+      }
+    }
+
+    return hourlyPrices;
   }
 
   async getSwapRate(ethAmount: number) {
     const ethPrice = await this.getEthereumPrice();
-    const btcAmount = ethAmount * ethPrice.ethToUsd * ethPrice.ethToBtc;
+    const btcAmount = ethAmount * ethPrice.ethToBtc;
     const fee = ethAmount * 0.03;
     return {
       btcAmount,
@@ -53,7 +72,38 @@ export class PriceService implements OnModuleInit {
       parseFloat(polygonPrice.usdPrice.toString()),
     );
 
-    // await this.checkAlerts();
+    await Promise.all([
+      this.checkAlerts(),
+      this.sendPriceIncreaseAlert(ethPrice.ethToUsd),
+    ]);
+  }
+
+  private async sendPriceIncreaseAlert(currentPrice: number) {
+    const chains = ['Ethereum', 'Polygon'];
+    const alertEmail = this.configService.get('ALERT_EMAIL');
+
+    for (const chain of chains) {
+      const previousPrice = await this.getPriceXHoursAgo(chain, 1);
+
+      const priceIncrease =
+        ((currentPrice - previousPrice) / previousPrice) * 100;
+
+      if (priceIncrease > 3) {
+        await this.sendEmail(
+          alertEmail,
+          `Price Alert: ${chain} price increased by more than 3%`,
+        );
+      }
+    }
+  }
+
+  private async getPriceXHoursAgo(chain: string, hours: number) {
+    const prices = await this.priceRepository.findPricesSinceYesterday(chain);
+    const price = prices.find((p) => p.createdAt.getHours() === hours);
+    if (!price) {
+      return 0;
+    }
+    return price.price;
   }
 
   private async checkAlerts() {
@@ -69,33 +119,16 @@ export class PriceService implements OnModuleInit {
           alert.email,
           `Price Alert: ${alert.chain} has reached ${alert.price}`,
         );
-        // await this.priceRepository.updateAlertStatus(alert.id, false);
+        await this.alertService.updateAlertStatus(alert.id, false);
       }
     }
   }
 
-  private sendEmail(to: string, subject: string) {
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: 'your-email@gmail.com',
-        pass: 'your-email-password',
-      },
-    });
-
-    const mailOptions = {
-      from: 'your-email@gmail.com',
+  private async sendEmail(to: string, subject: string) {
+    await this.mailerService.sendMail({
       to,
       subject,
       text: subject,
-    };
-
-    transporter.sendMail(mailOptions, (error, info) => {
-      if (error) {
-        console.error('Error sending email:', error);
-      } else {
-        console.log('Email sent:', info.response);
-      }
     });
   }
 
