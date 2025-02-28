@@ -1,0 +1,25 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Price {
+  id String @id @default(uuid())
+  price Float
+  chain String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Alert {
+  id     String   @id @default(uuid())
+  chain  String
+  price  Float
+  email  String
+  active Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
