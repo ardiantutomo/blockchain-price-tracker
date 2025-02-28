@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - '3000:3000'
+    environment:
+      DATABASE_URL: 'file:./dev.db'
+      MORALIS_API_KEY: 'moralis_api_key'
+      ETHERSCAN_API_KEY: 'etherscan_key'
+      EMAIL_USER: 'email_user'
+      EMAIL_PASS: 'email_pass'
+      ALERT_EMAIL: 'hyperhire_assignment@hyperhire.in'
+    volumes:
+      - .:/usr/src/app
+    command: npm run start:prod
